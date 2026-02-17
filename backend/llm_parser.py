@@ -1,36 +1,33 @@
 import requests
 import json
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "llama3"
-
 def parse_user_message(message: str):
 
     prompt = f"""
-Extract structured JSON from this Indian travel message.
+Extract travel preferences into JSON format:
 
-Return ONLY valid JSON with fields:
-{{
-  "budget": integer,
-  "vibes": list of lowercase strings,
-  "start_city": string,
-  "start_date": YYYY-MM-DD,
-  "end_date": YYYY-MM-DD
-}}
+Fields:
+- budget (integer in INR)
+- vibes (list of strings)
+- start_city
+- start_date
+- end_date
 
-Message:
+User message:
 {message}
+
+Return ONLY JSON.
 """
 
     response = requests.post(
-        OLLAMA_URL,
+        "http://localhost:11434/api/generate",
         json={
-            "model": MODEL,
+            "model": "llama3",
             "prompt": prompt,
             "stream": False
         }
     )
 
-    content = response.json()["response"]
+    text = response.json()["response"]
 
-    return json.loads(content)
+    return json.loads(text)

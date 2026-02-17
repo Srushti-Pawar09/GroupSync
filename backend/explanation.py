@@ -1,29 +1,24 @@
 import requests
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "llama3"
-
 def generate_explanation(results):
 
     prompt = f"""
-Explain why these destinations are suitable for the group.
+Explain why these destinations are ideal for this group.
 
 Focus on:
-- Matched vibes
-- Budget fairness
+- Cost fairness
+- Vibe matching
 - Group suitability
-- Famous local food
-
-Be conversational but concise.
+- Famous food
 
 Data:
 {results}
 """
 
     response = requests.post(
-        OLLAMA_URL,
+        "http://localhost:11434/api/generate",
         json={
-            "model": MODEL,
+            "model": "llama3",
             "prompt": prompt,
             "stream": False
         }

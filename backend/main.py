@@ -1,18 +1,16 @@
-from fastapi import FastAPI, Body
+from fastapi import FastAPI
 from llm_parser import parse_user_message
 from recommender import recommend_destinations
 from explanation import generate_explanation
-import requests
 
 app = FastAPI()
 
 group_members = []
 
 @app.post("/chat")
-def chat(payload: dict = Body(...)):
-    message = payload["message"]
+def chat(payload: dict):
 
-    parsed = parse_user_message(message)
+    parsed = parse_user_message(payload["message"])
     group_members.append(parsed)
 
     return {"parsed": parsed}
@@ -22,13 +20,9 @@ def chat(payload: dict = Body(...)):
 def recommend():
 
     results = recommend_destinations(group_members)
-
     explanation = generate_explanation(results)
 
     return {
         "recommendations": results,
         "explanation": explanation
     }
-
-
-
