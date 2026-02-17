@@ -1,33 +1,35 @@
-import requests
 import json
+from llm_service import call_llm
+
 
 def parse_user_message(message: str):
 
     prompt = f"""
-Extract travel preferences into JSON format:
+Extract structured travel preferences from the following message.
 
-Fields:
-- budget (integer in INR)
-- vibes (list of strings)
-- start_city
-- start_date
-- end_date
+Return ONLY valid JSON with this structure:
 
-User message:
+{{
+  "budget": integer,
+  "vibes": list of lowercase strings,
+  "start_city": lowercase string,
+  "start_date": "YYYY-MM-DD",
+  "end_date": "YYYY-MM-DD",
+  "group_size": integer
+}}
+
+If month is mentioned but no exact dates,
+assume 3-day trip starting from 10th of that month in 2026.
+
+Message:
 {message}
-
-Return ONLY JSON.
 """
 
-    response = requests.post(
-        "http://localhost:11434/api/generate",
-        json={
-            "model": "llama3",
-            "prompt": prompt,
-            "stream": False
-        }
-    )
+    raw = call_llm(prompt)
 
-    text = response.json()["response"]
+    try:
+        parsed = json.loads(raw)
+    except:
+        raise ValueError("LLM returned invalid JSON")
 
-    return json.loads(text)
+    return parsed

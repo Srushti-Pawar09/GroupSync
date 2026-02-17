@@ -1,13 +1,15 @@
 from datetime import datetime
 
-def find_common_dates(date_ranges):
-    starts = [datetime.strptime(d[0], "%Y-%m-%d") for d in date_ranges]
-    ends = [datetime.strptime(d[1], "%Y-%m-%d") for d in date_ranges]
 
-    latest_start = max(starts)
-    earliest_end = min(ends)
+def get_common_dates(users):
+    start_dates = [datetime.fromisoformat(u["start_date"]) for u in users]
+    end_dates = [datetime.fromisoformat(u["end_date"]) for u in users]
 
-    if latest_start <= earliest_end:
-        stay_days = (earliest_end - latest_start).days + 1
-        return stay_days
-    return 0
+    latest_start = max(start_dates)
+    earliest_end = min(end_dates)
+
+    if earliest_end <= latest_start:
+        return None, 0
+
+    duration = (earliest_end - latest_start).days
+    return (latest_start, earliest_end), duration
