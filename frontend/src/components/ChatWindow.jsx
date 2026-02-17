@@ -1,6 +1,7 @@
 import { useState } from "react";
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
+import React from "react";
 
 export default function ChatWindow({ groupId }) {
 
