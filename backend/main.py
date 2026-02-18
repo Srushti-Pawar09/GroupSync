@@ -2,12 +2,24 @@ from fastapi import FastAPI
 from llm_parser import parse_user_message
 from recommender import recommend_destinations
 from explanation import generate_explanation
-
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
 
 # In-memory group storage
 groups = {}
 
+origins = [
+    "http://localhost:5173",
+    "https://poetic-shortbread-43548a.netlify.app/"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/chat")
 def chat(payload: dict):
