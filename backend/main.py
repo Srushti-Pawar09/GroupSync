@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from llm_parser import parse_user_message
 from recommender import recommend_destinations
 from explanation import generate_explanation
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
 
