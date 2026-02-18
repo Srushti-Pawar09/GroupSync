@@ -10,7 +10,7 @@ groups = {}
 
 origins = [
     "http://localhost:5173",
-    "https://poetic-shortbread-43548a.netlify.app/"
+    "https://poetic-shortbread-43548a.netlify.app"
 ]
 
 app.add_middleware(
@@ -28,7 +28,11 @@ def chat(payload: dict):
     user_id = payload.get("user_id", "anonymous")
     message = payload["message"]
 
-    parsed = parse_user_message(message)
+    try:
+        parsed = parse_user_message(message)
+    except Exception as e:
+        return {"error": str(e)}
+
     parsed["user_id"] = user_id
 
     if group_id not in groups:
@@ -101,31 +105,7 @@ def recommend(payload: dict):
         "recommendations": results,
         "explanation": explanation
     }
-@app.post("/recommend")
-def recommend(payload: dict):
 
-    group_id = payload["group_id"]
-
-    if group_id not in groups or not groups[group_id]:
-        return {"message": "No preferences found for this group."}
-
-    users = groups[group_id]
-
-    if not is_group_ready(users):
-        return {
-            "message": "Group not ready. Waiting for more complete preferences.",
-            "members_count": len(users)
-        }
-
-    results = recommend_destinations(users)
-    explanation = generate_explanation(results)
-
-    return {
-        "group_id": group_id,
-        "members_count": len(users),
-        "recommendations": results,
-        "explanation": explanation
-    }
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
