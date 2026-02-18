@@ -25,7 +25,7 @@ app.add_middleware(
 def chat(payload: dict):
 
     group_id = payload["group_id"]
-    user_id = payload["user_id"]
+    user_id = payload.get("user_id", "anonymous")
     message = payload["message"]
 
     parsed = parse_user_message(message)
