@@ -2,6 +2,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import "./chat.css";
 
+const API = import.meta.env.VITE_API_URL;
+console.log("API URL =", API);
+
 export default function ChatRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -9,11 +12,56 @@ export default function ChatRoom() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
 
-    setMessages([...messages, { text: input, sender: "me" }]);
+    const userMessage = input;
+
+    setMessages((prev) => [
+      ...prev,
+      { text: userMessage, sender: "me" }
+    ]);
+
     setInput("");
+
+    try {
+      console.log("Sending to:", API);
+
+      await fetch(`${API}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userMessage })
+      });
+
+      const res = await fetch(`${API}/recommend`, {
+        method: "POST"
+      });
+
+      const data = await res.json();
+
+      console.log("Recommendation response:", data);
+
+      if (data.recommendations?.length > 0) {
+        const top = data.recommendations[0];
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            text: `Suggested city: ${top.city}
+Days: ${top.suggested_days}
+Cost per person: ₹${top.total_cost_per_person}`,
+            sender: "bot"
+          }
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { text: "No matching destinations found.", sender: "bot" }
+        ]);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+    }
   };
 
   return (
