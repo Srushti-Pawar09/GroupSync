@@ -80,3 +80,24 @@ body {
   color: blue;
   cursor: pointer;
 }
+
+/* ===== Dashboard ===== */
+
+.page-container {
+  padding: 40px;
+}
+
+.form-block {
+  margin-top: 15px;
+  margin-bottom: 30px;
+}
+
+.form-block input {
+  padding: 8px;
+  width: 250px;
+  margin-right: 10px;
+}
+
+.form-block button {
+  padding: 8px 12px;
+}

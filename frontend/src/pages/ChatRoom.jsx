@@ -1,64 +1,56 @@
-import { useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useState } from "react";
-import "../styles.css";
+import "./chat.css";
 
-export default function Dashboard() {
+export default function ChatRoom() {
+  const { id } = useParams();
   const navigate = useNavigate();
 
-  const [createGroupName, setCreateGroupName] = useState("");
-  const [joinGroupName, setJoinGroupName] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
 
-  const handleCreate = () => {
-    if (!createGroupName) return;
-    navigate(`/chat/${createGroupName}`);
-  };
+  const handleSend = () => {
+    if (!input.trim()) return;
 
-  const handleJoin = () => {
-    if (!joinGroupName) return;
-    navigate(`/chat/${joinGroupName}`);
-  };
-
-  const handleLogout = () => {
-    navigate("/");
+    setMessages([...messages, { text: input, sender: "me" }]);
+    setInput("");
   };
 
   return (
-    <div className="page-container">
-
-      <button onClick={handleLogout}>Logout</button>
-
-      <h2>Create Group</h2>
-
-      <div className="form-block">
-        <label>Name</label>
-        <input
-          type="text"
-          value={createGroupName}
-          onChange={(e) => setCreateGroupName(e.target.value)}
-        />
-
-        <button onClick={handleCreate}>
-          Create Group
-        </button>
+    <div className="chat-app">
+      <div className="sidebar">
+        <div className="sidebar-header">Members</div>
+        <div className="member">You</div>
       </div>
 
-      <p>Or</p>
+      <div className="chat-section">
+        <div className="chat-header">
+          <span>Group name : {id}</span>
+          <button onClick={() => navigate("/")}>Logout</button>
+        </div>
 
-      <h2>Join Group</h2>
+        <div className="messages">
+          {messages.map((msg, index) => (
+            <div
+              key={index}
+              className={`message ${msg.sender === "me" ? "me" : "other"}`}
+            >
+              {msg.text}
+            </div>
+          ))}
+        </div>
 
-      <div className="form-block">
-        <label>Name</label>
-        <input
-          type="text"
-          value={joinGroupName}
-          onChange={(e) => setJoinGroupName(e.target.value)}
-        />
-
-        <button onClick={handleJoin}>
-          Join Group
-        </button>
+        <div className="message-input">
+          <input
+            type="text"
+            placeholder="Enter text..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          />
+          <button onClick={handleSend}>Send</button>
+        </div>
       </div>
-
     </div>
   );
 }
