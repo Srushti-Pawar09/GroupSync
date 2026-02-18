@@ -1,75 +1,62 @@
-import React from "react";
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getGroups, saveGroups } from "../utils/storage";
-
+import { useState } from "react";
+import "../styles.css";
 
 export default function Dashboard() {
-
-  const [groupName, setGroupName] = useState("");
-  const [groupPass, setGroupPass] = useState("");
   const navigate = useNavigate();
 
-  const createGroup = () => {
+  const [createGroupName, setCreateGroupName] = useState("");
+  const [joinGroupName, setJoinGroupName] = useState("");
 
-    if (!groupName || !groupPass) return alert("Fill all fields");
-
-    const groups = getGroups();
-    const exists = groups.find(g => g.name === groupName);
-
-    if (exists) return alert("Group already exists");
-
-    const newGroup = {
-      id: Date.now(),
-      name: groupName,
-      password: groupPass
-    };
-
-    groups.push(newGroup);
-    saveGroups(groups);
-
-    navigate(`/chat/${newGroup.id}`);
+  const handleCreate = () => {
+    if (!createGroupName) return;
+    navigate(`/chat/${createGroupName}`);
   };
 
-  const joinGroup = () => {
+  const handleJoin = () => {
+    if (!joinGroupName) return;
+    navigate(`/chat/${joinGroupName}`);
+  };
 
-    const groups = getGroups();
-    const group = groups.find(
-      g => g.name === groupName && g.password === groupPass
-    );
-
-    if (!group) return alert("Invalid group credentials");
-
-    navigate(`/chat/${group.id}`);
+  const handleLogout = () => {
+    navigate("/");
   };
 
   return (
-    <div className="dashboard">
+    <div className="page-container">
 
-      <h2>Welcome {localStorage.getItem("currentUser")}</h2>
+      <button onClick={handleLogout}>Logout</button>
 
-      <div className="group-box">
-        <h3>Create Group</h3>
+      <h2>Create Group</h2>
 
+      <div className="form-block">
+        <label>Name</label>
         <input
-          placeholder="Group Name"
-          value={groupName}
-          onChange={(e) => setGroupName(e.target.value)}
+          type="text"
+          value={createGroupName}
+          onChange={(e) => setCreateGroupName(e.target.value)}
         />
 
-        <input
-          type="password"
-          placeholder="Group Password"
-          value={groupPass}
-          onChange={(e) => setGroupPass(e.target.value)}
-        />
-
-        <button onClick={createGroup}>Create</button>
+        <button onClick={handleCreate}>
+          Create Group
+        </button>
       </div>
 
-      <div className="group-box">
-        <h3>Join Group</h3>
-        <button onClick={joinGroup}>Join</button>
+      <p>Or</p>
+
+      <h2>Join Group</h2>
+
+      <div className="form-block">
+        <label>Name</label>
+        <input
+          type="text"
+          value={joinGroupName}
+          onChange={(e) => setJoinGroupName(e.target.value)}
+        />
+
+        <button onClick={handleJoin}>
+          Join Group
+        </button>
       </div>
 
     </div>
