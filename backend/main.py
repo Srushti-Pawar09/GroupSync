@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from google.generativeai import genai
+from google import genai
 import os
 import uvicorn
 
@@ -20,8 +20,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in environment variables.")
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=GEMINI_API_KEY)
+
 # -----------------------------
 # FastAPI setup
 # -----------------------------
@@ -68,20 +68,18 @@ def chat(payload: dict):
     username = payload["username"]
     message = payload["message"]
 
-    # Initialize group if not exists
     group = groups.setdefault(group_id, {
         "messages": [],
         "preferences": {},
         "history": []
     })
 
-    # Save message
     group["messages"].append({
         "user": username,
         "text": message
     })
 
-    # Extract structured preferences
+    # Extract preferences
     try:
         extracted = parse_user_input(message)
     except Exception:
@@ -93,7 +91,7 @@ def chat(payload: dict):
     group["preferences"][username].update(extracted)
 
     # -----------------------------------------
-    # TRIGGER RECOMMENDATION IF REQUESTED
+    # TRIGGER RECOMMENDATION
     # -----------------------------------------
     if "@bot recommend" in message.lower():
 
@@ -104,24 +102,29 @@ def chat(payload: dict):
                 combined.setdefault(key, []).append(value)
 
         prompt = f"""
-        You are a group travel planning assistant.
-        Given multiple users' preferences,
-        suggest one optimal destination.
+You are a group travel planning assistant.
+Given multiple users' preferences,
+suggest one optimal destination.
 
-        Return:
-        - City
-        - Estimated days
-        - Cost per person
+Return:
+- City
+- Estimated days
+- Cost per person
 
-        Speak clearly and naturally.
+Speak clearly and naturally.
 
-        Group preferences:
-        {combined}
-        """
+Group preferences:
+{combined}
+"""
 
         try:
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt
+            )
+
             reply = response.text
+
         except Exception:
             reply = "Recommendation generation failed."
 
@@ -133,7 +136,7 @@ def chat(payload: dict):
         return {"reply": reply}
 
     # -----------------------------------------
-    # Otherwise normal conversational reply
+    # Normal conversational reply
     # -----------------------------------------
     reply_prompt = f"""
 You are a travel planning assistant in a group chat.
@@ -149,7 +152,13 @@ If enough data exists, summarize current plan.
 """
 
     try:
-        reply = call_llm(reply_prompt)
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=reply_prompt
+        )
+
+        reply = response.text
+
     except Exception:
         reply = "Preferences updated."
 
