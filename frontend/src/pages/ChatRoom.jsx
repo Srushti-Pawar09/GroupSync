@@ -2,8 +2,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import "./chat.css";
 
-const API = import.meta.env.VITE_API_URL;
-console.log("API URL =", API);
+const API = import.meta.env.VITE_API_BASE;
+console.log("API URL =", API_BASE);
 
 export default function ChatRoom() {
   const { id } = useParams();
