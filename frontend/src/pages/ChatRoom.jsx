@@ -13,14 +13,38 @@ export default function ChatRoom() {
 
   const token = localStorage.getItem("token");
 
+  // 🔐 If no token → redirect
+  useEffect(() => {
+    if (!token) {
+      navigate("/");
+    }
+  }, [token, navigate]);
+
+  // 🔐 Decode current user safely
+  let currentUser = null;
+  if (token) {
+    try {
+      currentUser = JSON.parse(atob(token.split(".")[1])).sub;
+    } catch {
+      currentUser = null;
+    }
+  }
+
+  // 📥 Load previous messages
   useEffect(() => {
     const fetchMessages = async () => {
       try {
         const res = await fetch(`${API}/messages/${id}`, {
           headers: {
-            "Authorization": `Bearer ${token}`
+            Authorization: `Bearer ${token}`
           }
         });
+
+        if (res.status === 401) {
+          localStorage.removeItem("token");
+          navigate("/");
+          return;
+        }
 
         const data = await res.json();
 
@@ -29,7 +53,7 @@ export default function ChatRoom() {
           sender:
             msg.role === "assistant"
               ? "bot"
-              : msg.username === JSON.parse(atob(token.split('.')[1])).sub
+              : msg.username === currentUser
                 ? "me"
                 : "other"
         }));
@@ -41,9 +65,10 @@ export default function ChatRoom() {
       }
     };
 
-    fetchMessages();
-  }, [id]);
+    if (token) fetchMessages();
+  }, [id, token]);
 
+  // 📤 Send message
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -61,13 +86,19 @@ export default function ChatRoom() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem("token")}`
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
           group_id: id,
           message: messageToSend
         })
       });
+
+      if (res.status === 401) {
+        localStorage.removeItem("token");
+        navigate("/");
+        return;
+      }
 
       const data = await res.json();
 
@@ -90,7 +121,7 @@ export default function ChatRoom() {
     <div className="chat-app">
       <div className="sidebar">
         <div className="sidebar-header">Members</div>
-        <div className="member">You</div>
+        <div className="member">{currentUser}</div>
       </div>
 
       <div className="chat-section">
