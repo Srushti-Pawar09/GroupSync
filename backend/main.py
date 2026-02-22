@@ -38,7 +38,9 @@ app.add_middleware(
 # In-memory storage
 # -----------------------------
 groups = {}
-
+@app.get("/")
+def root():
+    return {"message": "GroupSync Backend is running"}
 # -----------------------------
 # Helper: Check if group ready
 # -----------------------------
