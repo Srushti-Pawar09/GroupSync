@@ -35,3 +35,5 @@ export default function Login() {
     </div>
   );
 }
+localStorage.setItem("token", data.access_token);
+navigate(`/chat/${groupId}`);
