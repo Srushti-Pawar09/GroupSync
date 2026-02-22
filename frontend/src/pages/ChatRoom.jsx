@@ -1,9 +1,8 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./chat.css";
 
 const API = import.meta.env.VITE_API_BASE;
-console.log("API URL =", API);
 
 export default function ChatRoom() {
   const { id } = useParams();
@@ -11,6 +10,39 @@ export default function ChatRoom() {
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+
+  const token = localStorage.getItem("token");
+
+  useEffect(() => {
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch(`${API}/messages/${id}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        const data = await res.json();
+
+        const formatted = data.messages.map(msg => ({
+          text: msg.message,
+          sender:
+            msg.role === "assistant"
+              ? "bot"
+              : msg.username === JSON.parse(atob(token.split('.')[1])).sub
+                ? "me"
+                : "other"
+        }));
+
+        setMessages(formatted);
+
+      } catch (err) {
+        console.error("Failed to fetch messages");
+      }
+    };
+
+    fetchMessages();
+  }, [id]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -27,17 +59,17 @@ export default function ChatRoom() {
     try {
       const res = await fetch(`${API}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           group_id: id,
-          username: "Sai",
           message: messageToSend
         })
       });
 
       const data = await res.json();
-console.log("Backend response:", data);
-
 
       if (data.reply) {
         setMessages(prev => [
@@ -64,7 +96,12 @@ console.log("Backend response:", data);
       <div className="chat-section">
         <div className="chat-header">
           <span>Group name : {id}</span>
-          <button onClick={() => navigate("/")}>Logout</button>
+          <button onClick={() => {
+            localStorage.removeItem("token");
+            navigate("/");
+          }}>
+            Logout
+          </button>
         </div>
 
         <div className="messages">
