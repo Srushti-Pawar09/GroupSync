@@ -45,11 +45,16 @@ def get_db_connection():
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
+import hashlib
+
 def hash_password(password: str):
-    return pwd_context.hash(password)
+    # First hash with SHA256 to reduce length safely
+    safe_password = hashlib.sha256(password.encode()).hexdigest()
+    return pwd_context.hash(safe_password)
 
 def verify_password(password: str, hashed: str):
-    return pwd_context.verify(password, hashed)
+    safe_password = hashlib.sha256(password.encode()).hexdigest()
+    return pwd_context.verify(safe_password, hashed)
 
 def create_token(username: str):
     payload = {
