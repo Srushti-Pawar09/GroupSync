@@ -1,29 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-from google import genai
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import psycopg2
 import os
-import uvicorn
-
-from llm_parser import parse_user_input
-from recommender import recommend_destinations
-from explanation import generate_explanation
-from llm_service import call_llm
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+import datetime
+from google import genai
 
 # -----------------------------
-# Load environment variables
-# -----------------------------
-load_dotenv()
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in environment variables.")
-
-client = genai.Client(api_key=GEMINI_API_KEY)
-
-# -----------------------------
-# FastAPI setup
+# App setup
 # -----------------------------
 app = FastAPI()
 
@@ -38,191 +24,177 @@ app.add_middleware(
 )
 
 # -----------------------------
-# In-memory storage
+# Environment
 # -----------------------------
-groups = {}
+DATABASE_URL = os.getenv("DATABASE_URL")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
+ALGORITHM = "HS256"
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# -----------------------------
+# DB connection helper
+# -----------------------------
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
+
+# -----------------------------
+# Auth setup
+# -----------------------------
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer()
+
+def hash_password(password: str):
+    return pwd_context.hash(password)
+
+def verify_password(password: str, hashed: str):
+    return pwd_context.verify(password, hashed)
+
+def create_token(username: str):
+    payload = {
+        "sub": username,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=1)
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload["sub"]
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# -----------------------------
+# Routes
+# -----------------------------
+
 @app.get("/")
-def root():
+def home():
     return {"message": "GroupSync Backend is running"}
-# -----------------------------
-# Helper: Check if group ready
-# -----------------------------
-def is_group_ready(preferences_dict):
 
-    if len(preferences_dict) < 2:
-        return False
-
-    for user, prefs in preferences_dict.items():
-        if not prefs.get("budget"):
-            return False
-        if not prefs.get("vibes"):
-            return False
-        if not prefs.get("start_date") or not prefs.get("end_date"):
-            return False
-
-    return True
-
-
-# -----------------------------
-# Chat Endpoint
-# -----------------------------
-@app.post("/chat")
-def chat(payload: dict):
-
-    group_id = payload["group_id"]
+# -------- Register --------
+@app.post("/register")
+def register(payload: dict):
     username = payload["username"]
+    password = payload["password"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    hashed = hash_password(password)
+
+    try:
+        cursor.execute(
+            "INSERT INTO users (username, password_hash) VALUES (%s, %s)",
+            (username, hashed)
+        )
+        conn.commit()
+    except:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    conn.close()
+    return {"message": "User created"}
+
+# -------- Login --------
+@app.post("/login")
+def login(payload: dict):
+    username = payload["username"]
+    password = payload["password"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT password_hash FROM users WHERE username=%s",
+        (username,)
+    )
+    user = cursor.fetchone()
+    conn.close()
+
+    if not user or not verify_password(password, user[0]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_token(username)
+    return {"token": token}
+
+# -------- Get Messages --------
+@app.get("/messages/{group_id}")
+def get_messages(group_id: str, username: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT username, message, role FROM messages WHERE group_id=%s ORDER BY created_at",
+        (group_id,)
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    messages = [
+        {"username": r[0], "message": r[1], "role": r[2]}
+        for r in rows
+    ]
+
+    return {"messages": messages}
+
+# -------- Chat --------
+@app.post("/chat")
+def chat(payload: dict, username: str = Depends(get_current_user)):
+    group_id = payload["group_id"]
     message = payload["message"]
 
-    group = groups.setdefault(group_id, {
-        "messages": [],
-        "preferences": {},
-        "history": []
-    })
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    group["messages"].append({
-        "user": username,
-        "text": message
-    })
+    # Create group if not exists
+    cursor.execute(
+        "INSERT INTO groups (id) VALUES (%s) ON CONFLICT DO NOTHING",
+        (group_id,)
+    )
 
-    # Extract preferences
-    try:
-        extracted = parse_user_input(message)
-    except Exception:
-        extracted = {}
+    # Save user message
+    cursor.execute(
+        "INSERT INTO messages (group_id, username, message, role) VALUES (%s, %s, %s, %s)",
+        (group_id, username, message, "user")
+    )
+    conn.commit()
 
-    if username not in group["preferences"]:
-        group["preferences"][username] = {}
+    # Fetch conversation
+    cursor.execute(
+        "SELECT username, message, role FROM messages WHERE group_id=%s ORDER BY created_at",
+        (group_id,)
+    )
+    history = cursor.fetchall()
 
-    group["preferences"][username].update(extracted)
+    conversation_text = ""
+    for h in history:
+        conversation_text += f"{h[0]} ({h[2]}): {h[1]}\n"
 
-    # -----------------------------------------
-    # TRIGGER RECOMMENDATION
-    # -----------------------------------------
-    if "@bot recommend" in message.lower():
+    prompt = f"""
+You are a helpful travel planning assistant in a group chat.
+Respond naturally and helpfully.
 
-        combined = {}
-
-        for user, prefs in group["preferences"].items():
-            for key, value in prefs.items():
-                combined.setdefault(key, []).append(value)
-
-        prompt = f"""
-You are a group travel planning assistant.
-Given multiple users' preferences,
-suggest one optimal destination.
-
-Return:
-- City
-- Estimated days
-- Cost per person
-
-Speak clearly and naturally.
-
-Group preferences:
-{combined}
+Conversation:
+{conversation_text}
 """
 
-        try:
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=prompt
-            )
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=prompt
+    )
 
-            reply = response.text
+    reply = response.text
 
-        except Exception:
-            reply = "Recommendation generation failed."
-
-        group["history"].append({
-            "role": "assistant",
-            "content": reply
-        })
-
-        return {"reply": reply}
-
-    # -----------------------------------------
-    # Normal conversational reply
-    # -----------------------------------------
-    reply_prompt = f"""
-You are a travel planning assistant in a group chat.
-
-Current group preferences:
-{group["preferences"]}
-
-Latest message from {username}:
-"{message}"
-
-Respond conversationally.
-If enough data exists, summarize current plan.
-"""
-
-    try:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=reply_prompt
-        )
-
-        reply = response.text
-
-    except Exception:
-        reply = "Preferences updated."
+    # Save assistant reply
+    cursor.execute(
+        "INSERT INTO messages (group_id, username, message, role) VALUES (%s, %s, %s, %s)",
+        (group_id, "assistant", reply, "assistant")
+    )
+    conn.commit()
+    conn.close()
 
     return {"reply": reply}
-
-
-# -----------------------------
-# Get Group Info
-# -----------------------------
-@app.get("/group/{group_id}")
-def get_group(group_id: str):
-
-    if group_id not in groups:
-        return {"message": "Group not found"}
-
-    group = groups[group_id]
-
-    return {
-        "group_id": group_id,
-        "members_count": len(group["preferences"]),
-        "preferences": group["preferences"],
-        "messages": group["messages"]
-    }
-
-
-# -----------------------------
-# Explicit Recommend Endpoint
-# -----------------------------
-@app.post("/recommend")
-def recommend(payload: dict):
-
-    group_id = payload["group_id"]
-
-    if group_id not in groups:
-        return {"message": "Group not found"}
-
-    group = groups[group_id]
-    preferences = group["preferences"]
-
-    if not is_group_ready(preferences):
-        return {
-            "message": "Group not ready. Waiting for complete preferences.",
-            "members_count": len(preferences)
-        }
-
-    results = recommend_destinations(preferences)
-    explanation = generate_explanation(results)
-
-    return {
-        "group_id": group_id,
-        "members_count": len(preferences),
-        "recommendations": results,
-        "explanation": explanation
-    }
-
-
-# -----------------------------
-# Entry point for local dev
-# -----------------------------
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
