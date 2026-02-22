@@ -1,35 +1,45 @@
 import json
 from llm_service import call_llm
+import re
+
+def extract_json(text):
+    """
+    Extract first JSON object from LLM response.
+    """
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        return match.group(0)
+    return None
 
 
-def parse_user_message(message: str):
-
+def parse_user_input(message: str):
     prompt = f"""
-Extract structured travel preferences from the following message.
+    Extract travel preferences from the message below.
+    Return ONLY valid JSON.
+    
+    Required format:
+    {{
+      "budget": number or null,
+      "vibe": list of strings,
+      "start_city": string or null,
+      "dates": string or null
+    }}
 
-Return ONLY valid JSON with this structure:
-
-{{
-  "budget": integer,
-  "vibes": list of lowercase strings,
-  "start_city": lowercase string,
-  "start_date": "YYYY-MM-DD",
-  "end_date": "YYYY-MM-DD",
-  "group_size": integer
-}}
-
-If month is mentioned but no exact dates,
-assume 3-day trip starting from 10th of that month in 2026.
-
-Message:
-{message}
-"""
+    Message:
+    {message}
+    """
 
     raw = call_llm(prompt)
 
-    try:
-        parsed = json.loads(raw)
-    except:
-        raise ValueError("LLM returned invalid JSON")
+    if not raw:
+        return {}
 
-    return parsed
+    json_text = extract_json(raw)
+
+    if not json_text:
+        return {}
+
+    try:
+        return json.loads(json_text)
+    except:
+        return {}
