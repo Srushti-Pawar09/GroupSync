@@ -1,15 +1,11 @@
-import requests
+from google import genai
+import os
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "phi3:mini"
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 def call_llm(prompt: str) -> str:
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": MODEL,
-            "prompt": prompt,
-            "stream": False
-        }
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=prompt
     )
-    return response.json().get("response", "")
+    return response.text
