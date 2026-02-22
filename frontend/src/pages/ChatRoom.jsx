@@ -15,52 +15,42 @@ export default function ChatRoom() {
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    const userMessage = input;
+    const messageToSend = input;
 
-    setMessages((prev) => [
+    setMessages(prev => [
       ...prev,
-      { text: userMessage, sender: "me" }
+      { text: messageToSend, sender: "me" }
     ]);
 
     setInput("");
 
     try {
-      console.log("Sending to:", API);
-
-      await fetch(`${API}/chat`, {
+      const res = await fetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage })
-      });
-
-      const res = await fetch(`${API}/recommend`, {
-        method: "POST"
+        body: JSON.stringify({
+          group_id: id,
+          username: "Sai",
+          message: messageToSend
+        })
       });
 
       const data = await res.json();
+console.log("Backend response:", data);
 
-      console.log("Recommendation response:", data);
 
-      if (data.recommendations?.length > 0) {
-        const top = data.recommendations[0];
-
-        setMessages((prev) => [
+      if (data.reply) {
+        setMessages(prev => [
           ...prev,
-          {
-            text: `Suggested city: ${top.city}
-Days: ${top.suggested_days}
-Cost per person: ₹${top.total_cost_per_person}`,
-            sender: "bot"
-          }
-        ]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { text: "No matching destinations found.", sender: "bot" }
+          { text: data.reply, sender: "bot" }
         ]);
       }
+
     } catch (error) {
-      console.error("Error:", error);
+      setMessages(prev => [
+        ...prev,
+        { text: "Server error. Try again.", sender: "bot" }
+      ]);
     }
   };
 
