@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from openai import OpenAI
+from google.generativeai import genai
 import os
 import uvicorn
 
@@ -15,13 +15,13 @@ from llm_service import call_llm
 # -----------------------------
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY not found in environment variables.")
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY not found in environment variables.")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-1.5-flash")
 # -----------------------------
 # FastAPI setup
 # -----------------------------
@@ -103,30 +103,27 @@ def chat(payload: dict):
             for key, value in prefs.items():
                 combined.setdefault(key, []).append(value)
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """
-You are a group travel planning assistant.
-Given multiple users' preferences,
-suggest one optimal destination.
-Return:
-- City
-- Estimated days
-- Cost per person
-Speak clearly and naturally.
-"""
-                },
-                {
-                    "role": "user",
-                    "content": f"Group preferences: {combined}"
-                }
-            ]
-        )
+        prompt = f"""
+        You are a group travel planning assistant.
+        Given multiple users' preferences,
+        suggest one optimal destination.
 
-        reply = response.choices[0].message.content
+        Return:
+        - City
+        - Estimated days
+        - Cost per person
+
+        Speak clearly and naturally.
+
+        Group preferences:
+        {combined}
+        """
+
+        try:
+            response = model.generate_content(prompt)
+            reply = response.text
+        except Exception:
+            reply = "Recommendation generation failed."
 
         group["history"].append({
             "role": "assistant",
