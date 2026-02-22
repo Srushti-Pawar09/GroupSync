@@ -1,49 +1,90 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+from openai import OpenAI
+import os
+import uvicorn
+
 from llm_parser import parse_user_input
 from recommender import recommend_destinations
 from explanation import generate_explanation
-from dotenv import load_dotenv
-load_dotenv()
-from openai import OpenAI
 from llm_service import call_llm
-import os
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# -----------------------------
+# Load environment variables
+# -----------------------------
+load_dotenv()
 
-# In-memory group storage
-groups = {}
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-from fastapi.middleware.cors import CORSMiddleware
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY not found in environment variables.")
 
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# -----------------------------
+# FastAPI setup
+# -----------------------------
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # TEMPORARY for testing
+    allow_origins=["*"],   # restrict in production if needed
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# -----------------------------
+# In-memory storage
+# -----------------------------
+groups = {}
+
+# -----------------------------
+# Helper: Check if group ready
+# -----------------------------
+def is_group_ready(preferences_dict):
+
+    if len(preferences_dict) < 2:
+        return False
+
+    for user, prefs in preferences_dict.items():
+        if not prefs.get("budget"):
+            return False
+        if not prefs.get("vibes"):
+            return False
+        if not prefs.get("start_date") or not prefs.get("end_date"):
+            return False
+
+    return True
+
+
+# -----------------------------
+# Chat Endpoint
+# -----------------------------
 @app.post("/chat")
 def chat(payload: dict):
+
     group_id = payload["group_id"]
     username = payload["username"]
     message = payload["message"]
 
+    # Initialize group if not exists
     group = groups.setdefault(group_id, {
         "messages": [],
-        "preferences": {}
+        "preferences": {},
+        "history": []
     })
 
+    # Save message
     group["messages"].append({
         "user": username,
         "text": message
     })
 
-    # Parse structured data safely
+    # Extract structured preferences
     try:
         extracted = parse_user_input(message)
-    except:
+    except Exception:
         extracted = {}
 
     if username not in group["preferences"]:
@@ -51,42 +92,17 @@ def chat(payload: dict):
 
     group["preferences"][username].update(extracted)
 
-    # 🧠 Generate conversational reply using phi3
-    reply_prompt = f"""
-    You are a friendly travel planning assistant in a group chat.
-
-    Current group preferences:
-    {group["preferences"]}
-
-    Latest message from {username}:
-    "{message}"
-
-    Respond conversationally.
-    If enough data exists, summarize the group’s current plan.
-    """
-
-    try:
-        reply = call_llm(reply_prompt)
-    except:
-        reply = "Preferences updated."
-
-    return {"reply": reply}
-
-
-
-    # 🔥 TRIGGER CONDITION
+    # -----------------------------------------
+    # TRIGGER RECOMMENDATION IF REQUESTED
+    # -----------------------------------------
     if "@bot recommend" in message.lower():
 
-        # Aggregate preferences across users
         combined = {}
 
         for user, prefs in group["preferences"].items():
             for key, value in prefs.items():
-                if key not in combined:
-                    combined[key] = []
-                combined[key].append(value)
+                combined.setdefault(key, []).append(value)
 
-        # Send aggregated info to LLM
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -96,7 +112,10 @@ def chat(payload: dict):
 You are a group travel planning assistant.
 Given multiple users' preferences,
 suggest one optimal destination.
-Return city, estimated days, cost per person.
+Return:
+- City
+- Estimated days
+- Cost per person
 Speak clearly and naturally.
 """
                 },
@@ -116,66 +135,83 @@ Speak clearly and naturally.
 
         return {"reply": reply}
 
-    return {"reply": None}
+    # -----------------------------------------
+    # Otherwise normal conversational reply
+    # -----------------------------------------
+    reply_prompt = f"""
+You are a travel planning assistant in a group chat.
+
+Current group preferences:
+{group["preferences"]}
+
+Latest message from {username}:
+"{message}"
+
+Respond conversationally.
+If enough data exists, summarize current plan.
+"""
+
+    try:
+        reply = call_llm(reply_prompt)
+    except Exception:
+        reply = "Preferences updated."
+
+    return {"reply": reply}
 
 
-
-
-def is_group_ready(users):
-
-    if len(users) < 2:
-        return False
-
-    for u in users:
-        if not u.get("budget"):
-            return False
-        if not u.get("vibes"):
-            return False
-        if not u.get("start_date") or not u.get("end_date"):
-            return False
-
-    return True
-
+# -----------------------------
+# Get Group Info
+# -----------------------------
 @app.get("/group/{group_id}")
 def get_group(group_id: str):
 
     if group_id not in groups:
         return {"message": "Group not found"}
 
+    group = groups[group_id]
+
     return {
         "group_id": group_id,
-        "members_count": len(groups[group_id]),
-        "members": groups[group_id]
+        "members_count": len(group["preferences"]),
+        "preferences": group["preferences"],
+        "messages": group["messages"]
     }
 
 
+# -----------------------------
+# Explicit Recommend Endpoint
+# -----------------------------
 @app.post("/recommend")
 def recommend(payload: dict):
 
     group_id = payload["group_id"]
 
-    if group_id not in groups or not groups[group_id]:
-        return {"message": "No preferences found for this group."}
+    if group_id not in groups:
+        return {"message": "Group not found"}
 
-    users = groups[group_id]
+    group = groups[group_id]
+    preferences = group["preferences"]
 
-    if not is_group_ready(users):
+    if not is_group_ready(preferences):
         return {
-            "message": "Group not ready. Waiting for more complete preferences.",
-            "members_count": len(users)
+            "message": "Group not ready. Waiting for complete preferences.",
+            "members_count": len(preferences)
         }
 
-    results = recommend_destinations(users)
+    results = recommend_destinations(preferences)
     explanation = generate_explanation(results)
 
     return {
         "group_id": group_id,
-        "members_count": len(users),
+        "members_count": len(preferences),
         "recommendations": results,
         "explanation": explanation
     }
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
 
+# -----------------------------
+# Entry point for local dev
+# -----------------------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
