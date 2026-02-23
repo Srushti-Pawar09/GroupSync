@@ -28,7 +28,7 @@ app.add_middleware(
 # -----------------------------
 DATABASE_URL = os.getenv("DATABASE_URL")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -47,14 +47,14 @@ security = HTTPBearer()
 
 import hashlib
 
-def hash_password(password: str):
-    # First hash with SHA256 to reduce length safely
-    safe_password = hashlib.sha256(password.encode()).hexdigest()
-    return pwd_context.hash(safe_password)
-
-def verify_password(password: str, hashed: str):
-    safe_password = hashlib.sha256(password.encode()).hexdigest()
-    return pwd_context.verify(safe_password, hashed)
+def hash_password(password: str) -> str:
+    if len(password.encode("utf-8")) > 72:
+        password = password[:72]
+    return pwd_context.hash(password)
+def verify_password(password: str, hashed: str) -> bool:
+    if len(password.encode("utf-8")) > 72:
+        password = password[:72]
+    return pwd_context.verify(password, hashed)
 
 def create_token(username: str):
     payload = {
@@ -82,8 +82,11 @@ def home():
 # -------- Register --------
 @app.post("/register")
 def register(payload: dict):
-    username = payload["username"]
-    password = payload["password"]
+    username = payload.get("username")
+    password = payload.get("password")
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password required")
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -96,18 +99,20 @@ def register(payload: dict):
             (username, hashed)
         )
         conn.commit()
-    except:
+    except Exception as e:
         conn.close()
         raise HTTPException(status_code=400, detail="Username already exists")
 
     conn.close()
-    return {"message": "User created"}
-
+    return {"message": "User created successfully"}
 # -------- Login --------
 @app.post("/login")
 def login(payload: dict):
-    username = payload["username"]
-    password = payload["password"]
+    username = payload.get("username")
+    password = payload.get("password")
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password required")
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -119,11 +124,18 @@ def login(payload: dict):
     user = cursor.fetchone()
     conn.close()
 
-    if not user or not verify_password(password, user[0]):
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    if not verify_password(password, user[0]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_token(username)
-    return {"token": token}
+
+    return {
+        "access_token": token,
+        "token_type": "bearer"
+    }
 
 # -------- Get Messages --------
 @app.get("/messages/{group_id}")
