@@ -16,7 +16,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://group-sync-blond.vercel.app"
+        "*"
     ],
     allow_credentials=True,
     allow_methods=["*"],
