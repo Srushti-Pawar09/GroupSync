@@ -7,6 +7,9 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 import datetime
 from google import genai
+import bcrypt
+
+import hashlib
 
 # -----------------------------
 # App setup
@@ -16,7 +19,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "*"
+        "https://group-sync-blond.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -45,16 +48,17 @@ def get_db_connection():
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
-import hashlib
+def hash_password(password: str):
+    # Convert password to bytes, generate salt, and hash
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(pwd_bytes, salt)
+    return hashed_password.decode('utf-8')
 
-def hash_password(password: str) -> str:
-    if len(password.encode("utf-8")) > 72:
-        password = password[:72]
-    return pwd_context.hash(password)
-def verify_password(password: str, hashed: str) -> bool:
-    if len(password.encode("utf-8")) > 72:
-        password = password[:72]
-    return pwd_context.verify(password, hashed)
+def verify_password(plain_password, hashed_password):
+    password_byte_enc = plain_password.encode('utf-8')
+    hashed_password_byte_enc = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_byte_enc, hashed_password_byte_enc)
 
 def create_token(username: str):
     payload = {
